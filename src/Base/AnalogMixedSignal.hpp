@@ -13,9 +13,9 @@ static const int ANALOG_MIXED_SIGNALS_BASE_ADDR = 0x00400000;
 static const int ANALOG_MIXED_SIGNALS_BASE_SIZE = 0x30;
 
 struct AMSRegistersMap {
-    uint32_t aif [4];
+    uint32_t aif[4];
     uint32_t reserved[4];
-    uint32_t dac [4];
+    uint32_t dac[4];
 };
 
 class AnalogMixedSignal {

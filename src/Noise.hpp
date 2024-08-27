@@ -7,6 +7,9 @@
 
 class Signal; // Assurez-vous que la classe Signal est déjà définie
 
+/**
+ * @brief Abstract class for noise
+ */
 class Noise {
 protected:
 	double _gain;
@@ -29,6 +32,11 @@ public:
 	virtual double apply(double input) = 0;
 };
 
+
+/**
+ * @brief White noise
+ * @details White noise is a type of noise with a flat power spectral density.
+ */
 class WhiteNoise : public Noise {
 private:
 	std::default_random_engine _generator;
@@ -40,6 +48,10 @@ public:
 	double apply(double input) override;
 };
 
+/**
+ * @brief Pink noise
+ * @details Pink noise is a random signal whose spectral density is constant per octave band.
+ */
 class PinkNoise : public Noise {
 private:
 	std::vector<double> b; // Numerator coefficients
@@ -53,6 +65,10 @@ public:
 	double apply(double input) override;
 };
 
+/**
+ * @brief Brown noise
+ * @details Brown noise is a random signal whose spectral density is proportional to the inverse of the frequency.
+ */
 class BrownNoise : public Noise {
 private:
 	double previous;

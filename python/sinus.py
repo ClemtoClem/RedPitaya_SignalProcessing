@@ -2,13 +2,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Paramètres du signal sinusoidal
-decimation = 1
+decimation = 128
 N = 16384
 Fs = 125e6/decimation  # Fréquence d'échantillonnage en Hz
-T = N/Fs	   # Durée du signal en secondes
-f1 = 10e3	 # Fréquence du signal en Hz
-f2 = 10e3+100	 # Fréquence du signal en Hz
-f3 = 20e3
+T = N/Fs        # Durée du signal en secondes
+f1 = 1e3               # Fréquence du signal en Hz
+f2 = f1+100
+f3 = f1+20e3    # Fréquence du signal en Hz
 
 t = np.arange(0, T, 1/Fs)  # Vecteur temps
 

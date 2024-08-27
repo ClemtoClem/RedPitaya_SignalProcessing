@@ -31,6 +31,7 @@ public:
 
 	/**
 	 * @brief Write a descriptions on the arguments used and files created
+	 * @param[in] descriptions Descriptions of the arguments used and files created
 	 */
 	static void writeDescriptions(const std::string &descriptions) {
 		std::ofstream file(FILEPATH + "descriptions.cfg", std::ios::out | std::ios::trunc);
@@ -43,28 +44,55 @@ public:
 	// Method to read signals from a CSV file
 	std::vector<Signal> readSignals();
 
-	// Method to write signals to a CSV file
+	/**
+	 * @brief Method to write signals to a CSV file
+	 * @param[in] signals Signals to write
+	 * @param[in] axis If true, the axis will be written
+	*/
 	void writeSignals(const std::vector<Signal> &signals, bool axis = true);
 
-	// Method to write signal to a CSV file
+	/**
+	 * @brief Method to write signal to a CSV file
+	 * @param[in] signal Signal to write
+	 * @param[in] axis If true, the axis will be written
+	 */
 	void writeSignal(const Signal &signal, bool axis = true);
 
-	// Method to append signals to a CSV file
+	/**
+	 * @brief Method to append signals to a CSV file
+	 * @param[in] signals Signals to write
+	 */
 	void writeSignalsToEnd(const std::vector<Signal> &signals);
 	
-	// Method to add a signal to a CSV file
+	/**
+	 * @brief Method to add a signal to a CSV file
+	 * @param[in] signal Signal to write
+	 */
 	void writeSignalToEnd(const Signal &signal);
 
 	// Method to read spectrums from a CSV file
 	std::vector<Spectrum> readSpectrums();
 
-	// Method to write spectrums to a CSV file
+	/**
+	 * @brief Method to write spectrums to a CSV file
+	 * @param[in] spectrums Spectrums to write
+	 * @param[in] axis If true, the axis will be written
+	 * @param[in] withNegativeFrequencies If true, the negative frequencies will be written
+	 */
 	void writeSpectrums(const std::vector<Spectrum> &spectrums, bool axis = true, bool withNegativeFrequencies = false);
 
-	// Method to append spectrums to a CSV file
+	/**
+	 * @biref Method to append spectrums to a CSV file
+	 * @param[in] spectrums Spectrums to write
+	 * @param[in] withNegativeFrequencies If true, the negative frequencies will be written
+	 */
 	void writeSpectrumsToEnds(const std::vector<Spectrum> &spectrums, bool withNegativeFrequencies = false);
 
-	// Method to add a spectrum to a CSV file
+	/**
+	 * @brief Method to add a spectrum to a CSV file
+	 * @param[in] spectrum Spectrum to write
+	 * @param[in] withNegativeFrequencies If true, the negative frequencies will be written
+	 */
 	void writeSpectrumToEnd(const Spectrum &spectrum, bool withNegativeFrequencies = false);
 
 private:

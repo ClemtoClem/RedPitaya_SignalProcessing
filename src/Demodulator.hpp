@@ -11,7 +11,17 @@ public:
 	Demodulator();
 	Demodulator(double freq_filter, double freq_oscillator);
 
+	/**
+	 * @brief Set the parameters of the demodulator
+	 * @param freq_filter Frequency of the filter
+	 * @param freq_oscillator Frequency of the oscillator
+	 * @return true if the parameters are valid, false otherwise
+	 */
 	bool set(double freq_filter, double freq_oscillator);
+
+	/**
+	 * @brief Setup the demodulator
+	 */
 	void setup();
 
 	/**

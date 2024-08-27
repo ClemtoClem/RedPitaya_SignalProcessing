@@ -38,6 +38,7 @@ public:
 	 */
 	bool isSetup() const { return _isSetup; }
 
+	// réinitialisation du filtre
 	void reset();
 
 	// Méthode pour afficher les coefficients du filtre (à des fins de débogage)

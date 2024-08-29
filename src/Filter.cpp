@@ -483,6 +483,7 @@ bool AveragingFilter::set(int order) {
 	_order = order;
 	_isSetup = true;
 	reset();
+	return true;
 }
 
 void AveragingFilter::reset() {

@@ -50,7 +50,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		float output_offset = 0;
 		
 		// propriétés acquisition
-		int points_per_period = 100;
+		int points_per_period = 200;
 		bool hasSetDecimation = false;
 		int nb_acquisitions = 10; // nombre d'acquisitions à effectuer pour chaque fréquence
 		int delay = 1000;
@@ -109,7 +109,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 					std::cerr << "    delay=<integer µs>" << std::endl;
 					std::cerr << "      details: this is the delay between the end of the generation and the start of the acquisition" << std::endl;
 					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << delay << std::endl;
-					std::cerr << "    window_type=<string>; \twindow=<string>; " << std::endl;
+					std::cerr << "    window_type=<string>; \twin=<string>; " << std::endl;
 					std::cerr << "      details: this is the type of window to apply to the acquisition signal" << std::endl;
 					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << windowTypeToString(window_type) << std::endl;
 					std::cerr << "    dem_filter_freq=<integer>; \tdff=<integer>; " << std::endl;
@@ -156,7 +156,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 							output_offset = std::stof(value);
 						} else if (name == "delay") {
 							delay = std::abs(convertToInteger(value));
-						} else if (name == "window" || name == "win") {
+						} else if (name == "window_type" || name == "win") {
 							window_type = stringToWindowType(value);
 						} else if (name == "dem_filter_freq" || name == "dff") {
 							dem_filter_freq = std::abs(convertToInteger(value));
@@ -246,7 +246,8 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		Signal bigPhaseDemodulated2(BUFFER_SIZE*nb_acquisitions);
 		std::vector<Signal> signals;
 		std::vector<Signal> amplitudes;
-
+		
+		
 		/* - - - - - - - - - - - - - - - - - - - - - - - */
 		/* Initialisation de la plage de fréquences */
 		double step = static_cast<double>(frequency_max - frequency_min) / static_cast<double>(number_of_frequencies_in_the_inteval);
@@ -267,7 +268,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		/* Initialisation de la fenêtre */
 		Window window;
 		if (!window.set(window_type, BUFFER_SIZE)) {
-			std::runtime_error("Unable to set the window function.");
+			throw std::runtime_error("Unable to set the window function.");
 		}
 		window.setup();
 
@@ -286,8 +287,12 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		int i = 0, j = 0;
 		double phase_max = -2*M_PI;
 		int phase_max_frequency = frequency_min;
+		double phase_min = 2*M_PI;
+		int phase_min_frequency = frequency_max;
 		double amplitude_max = 0;
 		int amplitude_max_frequency = frequency_min;
+		double amplitude_min = 20.0f;
+		int amplitude_min_frequency = frequency_max;
 		
 		rp_GenReset();
 
@@ -299,6 +304,8 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		rp_GenPhase(RP_CH_1, output_phase);
 		rp_GenOutEnable(RP_CH_1);
 		rp_GenTriggerOnly(RP_CH_1);
+
+		double acq_time = 0;
 
 		for (double f : scanning_frequencies) {
 			rp_GenFreq(RP_CH_1, static_cast<int>(f));
@@ -313,7 +320,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 			indexRisingTime = static_cast<size_t>(std::floor(rising_time * SAMPLING_FREQUENCY));
 			sizePermanentRegime = BUFFER_SIZE - indexRisingTime;
 			if (indexRisingTime >= BUFFER_SIZE ) {
-				std::runtime_error("The rising time is too long.");
+				throw std::runtime_error("The rising time is too long.");
 			}
 
 			usleep(delay);
@@ -323,8 +330,14 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 				pourcent = std::floor((i + j*nb_acquisitions) / static_cast<float>(nb_acquisitions * scanning_frequencies.size())*10000)/100;
 				std::cerr << "\rFrequency " << f << " Hz (" << pourcent << "%)    " << std::flush;
 
+				auto acq_start = std::chrono::high_resolution_clock::now();
+
 				// Acquisition sur les channels 1 et 2 avec le trigger sur le channel 1
 				acquisitionChannels1_2(signal1, signal2, RP_T_CH_1);
+
+				auto acq_stop = std::chrono::high_resolution_clock::now();
+				auto duration = std::chrono::duration_cast<std::chrono::microseconds>(acq_stop - acq_start);
+				acq_time += duration.count()/1000;
 
 				// Fenêtrage des signaux
 				windowed_signal1 = window.apply(signal1);
@@ -373,6 +386,17 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 			if (phase > phase_max) {
 				phase_max = phase;
 				phase_max_frequency = f;
+			}
+
+			// on vérifie si l'amplitude est plus petite que l'amplitude minimale déjà enregistrée
+			if (amplitude < amplitude_min) {
+				amplitude_min = amplitude;
+				amplitude_min_frequency = f;
+			}
+			// on vérifie si la phase est plus grande que la phase minimale déjà enregistrée
+			if (phase < phase_min) {
+				phase_min = phase;
+				phase_min_frequency = f;
 			}
 
 			amplitude_of_movement.push_back(amplitude);
@@ -440,13 +464,20 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		oss << "delay = "				<< delay << std::endl;
 		oss << "window_type = "			<< windowTypeToString(window_type) << std::endl;
 		oss << "dem_filter_freq = "		<< dem_filter_freq << std::endl;
+		oss << "averaging_filter_order = " << averaging_filter_order << std::endl;
 		oss << "[variables]" << std::endl;
+		oss << "samplig_frequency = " << SAMPLING_FREQUENCY << std::endl;
 		oss << "index_rising_time = " << indexRisingTime << std::endl;
 		oss << "[measures]" << std::endl;
+		oss << "acquisition_time = " << acq_time / (scanning_frequencies.size() * nb_acquisitions) << std::endl;
 		oss << "amplitude_max = " << amplitude_max << std::endl;
 		oss << "amplitude_max_frequency = " << amplitude_max_frequency << std::endl;
 		oss << "phase_max = " << phase_max << std::endl;
 		oss << "phase_max_frequency = " << phase_max_frequency << std::endl;
+		oss << "amplitude_min = " << amplitude_min << std::endl;
+		oss << "amplitude_min_frequency = " << amplitude_min_frequency << std::endl;
+		oss << "phase_min = " << phase_min << std::endl;
+		oss << "phase_min_frequency = " << phase_min_frequency << std::endl;
 		oss << "[files]" << std::endl;
 		oss << "file1 = " << filename1 << std::endl;
 		oss << "file2 = " << filename2 << std::endl;

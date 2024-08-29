@@ -501,6 +501,8 @@ class FrequencyScanningPlot:
 			phase = { 'time': self.phases['time'], name: self.phases[name] }
 			freq = name.split("_")[-1]
 			plot_data(self.ax, phase, 'time_radian', 'linear', title = "phase du channel 1 pour un signal généré à "+ freq + " Hz", unit="m", usedColorMap = False)
+			#index_rising_time = 1000/float(self.configs["variables"]["index_rising_time"])
+			#self.ax.axvline(index_rising_time, color='g', linestyle='--', label="temps de montée " + str(index_rising_time) + 'ms')
 		elif self.current_plot_index == 3:
 			self.next_signal_button_ax.set_visible(True)
 			self.previous_signal_button_ax.set_visible(True)
@@ -508,26 +510,40 @@ class FrequencyScanningPlot:
 			phase = { 'time': self.phases['time'], name: self.phases[name] }
 			freq = name.split("_")[-1]
 			plot_data(self.ax, phase, 'time_radian', 'linear', title = "phase du channel 2 pour un signal généré à "+ freq + " Hz", unit="m", usedColorMap = False)
+			#index_rising_time = 1000/float(self.configs["variables"]["index_rising_time"])
+			#self.ax.axvline(index_rising_time, color='g', linestyle='--', label="temps de montée " + str(index_rising_time) + 'ms')
 		elif self.current_plot_index == 4:
 			name = self.titles_amplitudes[2*self.current_signal_index+1]
 			amplitude = { 'time': self.amplitudes['time'], name: self.amplitudes[name] }
 			freq = name.split("_")[-1]
 			plot_data(self.ax, amplitude, 'time', 'linear', title = "Amplitude calculée à partir du signal 1 pour un signal généré à "+ freq + " Hz", unit="m", usedColorMap = False)
+			#index_rising_time = 1000/float(self.configs["variables"]["index_rising_time"])
+			#self.ax.axvline(index_rising_time, color='g', linestyle='--', label="temps de montée " + str(index_rising_time) + 'ms')
 		elif self.current_plot_index == 5:
 			name = self.titles_amplitudes[2*self.current_signal_index+2]
 			amplitude = { 'time': self.amplitudes['time'], name: self.amplitudes[name] }
 			freq = name.split("_")[-1]
 			plot_data(self.ax, amplitude, 'time', 'linear', title = "Amplitude calculée à partir du signal 2 pour un signal généré à "+ freq + " Hz", unit="m", usedColorMap = False)
+			#index_rising_time = 1000/float(self.configs["variables"]["index_rising_time"])
+			#self.ax.axvline(index_rising_time, color='g', linestyle='--', label="temps de montée " + str(index_rising_time) + 'ms')
 		elif self.current_plot_index == 6:
 			self.next_signal_button_ax.set_visible(False)
 			self.previous_signal_button_ax.set_visible(False)
 			plot_data(self.ax, self.amplitudeOfMovement, 'frequency', 'linear', title = "Affichage de l'amplitude de déplacement", unit="k", usedColorMap = False, calculateModule = False)
 			freq_res = float(self.configs["measures"]["amplitude_max_frequency"])/1000
 			self.ax.axvline(freq_res, color='r', linestyle='--', label='frequence de résonnance ' + str(freq_res) + 'KHz')
+			freq_antires = 0
+			if 'amplitude_min_frequency' in self.configs["measures"]:
+				freq_antires = float(self.configs["measures"]["amplitude_min_frequency"])/1000
+				self.ax.axvline(freq_antires, color='r', linestyle='--', label="frequence d'anti résonnance " + str(freq_antires) + 'KHz')			
 		elif self.current_plot_index == 7:
 			plot_data(self.ax, self.phaseOfMovement, 'freq_radian', 'linear', title = "Affichage de la phase de déplacement", unit="k", usedColorMap = False, calculateModule = False)
-			freq_res = float(self.configs["measures"]["phase_max_frequency"])/1000
+			freq_res = float(self.configs["measures"]["amplitude_max_frequency"])/1000
 			self.ax.axvline(freq_res, color='r', linestyle='--', label='frequence de résonnance ' + str(freq_res) + 'KHz')
+			freq_antires = 0
+			if 'amplitude_min_frequency' in self.configs["measures"]:
+				freq_antires = float(self.configs["measures"]["amplitude_min_frequency"])/1000
+				self.ax.axvline(freq_antires, color='r', linestyle='--', label="frequence d'anti résonnance " + str(freq_antires) + 'KHz')
 		self.ax.grid(True)
 		self.ax.legend()
 		plt.tight_layout()

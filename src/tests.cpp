@@ -149,7 +149,7 @@ int test_acquire(const std::vector<std::string> &args) {
 		/* - - - - - - - - - - - - - - - - - - - - - - - */
 		
 		if (rp_InitReset(true) != RP_OK) {
-			std::runtime_error("Rp api init failed!");
+			throw std::runtime_error("Rp api init failed!");
 		}
 		
 		if (!hasSetDecimation) {
@@ -409,7 +409,7 @@ int test_spectrum(const std::vector<std::string> &args)
 
 		/* Print error, if rp_Init() function failed */
 		if (rp_InitReset(true) != RP_OK) {
-			std::runtime_error("Rp api init failed!");
+			throw std::runtime_error("Rp api init failed!");
 		}
 		initAcquisition(trigger_level, trigger_delay);
 		
@@ -676,7 +676,7 @@ int test_demodulation(const std::vector<std::string> &args) {
 
 		/* Print error, if rp_Init() function failed */
 		if (rp_InitReset(true) != RP_OK) {
-			std::runtime_error("Rp api init failed!");
+			throw std::runtime_error("Rp api init failed!");
 		}
 		initAcquisition(trigger_level, trigger_delay);
 		
@@ -1498,7 +1498,7 @@ int test_realTimeAcquisition2(const std::vector<std::string> &args) {
 		
 		for (int loop = 0; loop < nb_loop; loop++) {
 			if (rp_InitReset(true) != RP_OK) {
-				std::runtime_error("Rp api init failed!");
+				throw std::runtime_error("Rp api init failed!");
 			}
 
 			buffers_t *b = rp_createBuffer(2,BUFFER_SIZE,false,false,true);

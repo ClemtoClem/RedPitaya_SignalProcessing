@@ -215,6 +215,12 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 			return 1;
 		}
 
+		// Vérifier si le nombre de points sur l'intervalle de fréquence est inférieur à la différence entre les fréquences
+		if (number_of_frequencies_in_the_inteval > frequency_max - frequency_min) {
+			std::cerr << "Error: number_of_frequencies_in_the_inteval must be less than frequency_max - frequency_min" << std::endl;
+			return 1;
+		}
+
 		if (mode_debug) {
 			std::cerr  << "Debug mode is enabled" << std::endl;
 		}
@@ -358,7 +364,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 					if (measure_time) acq_timer.start();
 
 					// Acquisition sur les channels 1 et 2 avec le trigger sur le channel 1
-					//acquisitionChannels1_2(signal1, signal2, RP_T_CH_1);
+					acquisitionChannels1_2(signal1, signal2, RP_T_CH_1);
 
 					if (measure_time) acq_timer.stop();
 

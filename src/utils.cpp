@@ -158,13 +158,13 @@ std::string windowTypeToString(WindowType type) {
 		case WindowType::Nuttall:
 			return "Nuttall";
 		case WindowType::BlackmanNuttall:
-			return "BlackmanNuttall";
+			return "Blackman-Nuttall";
 		case WindowType::BlackmanHarris:
-			return "BlackmanHarris";
+			return "Blackman-Harris";
 		case WindowType::Tukey:
 			return "Tukey";
 		case WindowType::PlanckTaper:
-			return "PlanckTaper";
+			return "Planck-Taper";
 		default:
 			return "Unknown";
 	}

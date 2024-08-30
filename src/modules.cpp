@@ -29,6 +29,7 @@
 #include "utils.hpp"
 #include "globals.hpp"
 #include "acquisition.hpp"
+#include "Timer.hpp"
 #include <stdexcept>
 
 int module_frequencyScanning(const std::vector<std::string> &args) {
@@ -66,7 +67,8 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		// Taille de la memoire du filtre moyenneur
 		int averaging_filter_order = 2; 
 
-		bool mode_debug = true;
+		bool mode_debug = false;
+		bool measure_time = false;
 
 		if (args.size() >= 1) {
 			for (auto param : args) {
@@ -78,9 +80,13 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 					std::cerr << "  then performing an acquisition at the input of the card." << std::endl;
 					std::cerr << "  " << std::endl;
 					std::cerr << "Possibilities of utilisation : " << std::endl;
+					std::cerr << "  Debug options : " << std::endl;
 					std::cerr << "    mode_debug=<boolean>" << std::endl;
 					std::cerr << "      details: this is a boolean value, which if true, will display the" << std::endl;
 					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << mode_debug << std::endl;
+					std::cerr << "    measure_time=<boolean>" << std::endl;
+					std::cerr << "      details: this is a boolean value, which if true, will display the" << std::endl;
+					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << measure_time << std::endl;
 					std::cerr << "  Logarithmic scale for frequency scanning : " << std::endl;
 					std::cerr << "    frequency_min=<integer>; fmin=<integer>" << std::endl;
 					std::cerr << "      details: this is the minimum frequency of the frequency sweep" << std::endl;
@@ -142,6 +148,8 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 
 						if (name == "mode_debug") {
 							mode_debug = stringToBool(value);
+						} else if (name == "measure_time") { 
+							measure_time = stringToBool(value);
 						} else if (name == "frequency_min" || name == "fmin") {
 							frequency_min = convertToInteger(value);
 						} else if (name == "frequency_max" || name == "fmax") {
@@ -207,6 +215,13 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 			return 1;
 		}
 
+		if (mode_debug) {
+			std::cerr  << "Debug mode is enabled" << std::endl;
+		}
+		if (measure_time) {
+			std::cerr  << "Measure time is enabled" << std::endl;
+		}
+
 		/* Print error, if rp_Init() function failed */
 		if (rp_InitReset(true) != RP_OK) {
 			std::cerr << "Error: Rp api init failed!";
@@ -236,8 +251,6 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		Signal amplitude_demodulated1, phase_demodulated1;
 		Signal amplitude_demodulated2, phase_demodulated2;
 		Signal scanning_frequencies(0, "frequency");
-		Signal amplitude_of_movement(0, "AmplitudeOfMovement");
-		Signal phase_of_movement(0, "PhaseOfMovement");
 		Signal bigSignal1(BUFFER_SIZE*nb_acquisitions);
 		Signal bigSignal2(BUFFER_SIZE*nb_acquisitions);
 		Signal bigAmplitudeDemodulated1(BUFFER_SIZE*nb_acquisitions);
@@ -254,6 +267,10 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		for (double f = static_cast<double>(frequency_min); f <= static_cast<double>(frequency_max); f += step) {
 			scanning_frequencies.push_back(std::floor(f));
 		}
+
+		/* Initialisation des signaux */
+		Signal amplitude_of_movement(scanning_frequencies.size(), "AmplitudeOfMovement");
+		Signal phase_of_movement(scanning_frequencies.size(), "PhaseOfMovement");
 
 		/* - - - - - - - - - - - - - - - - - - - - - - - */
 		/* Initialisation de la démodulation */
@@ -304,10 +321,17 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		rp_GenPhase(RP_CH_1, output_phase);
 		rp_GenOutEnable(RP_CH_1);
 		rp_GenTriggerOnly(RP_CH_1);
+		
+		Timer acq_timer;
+		Timer process_timer;
+		Timer average_timer;
+		Timer sum_timer;
+		Timer demodulation_timer;
 
-		double acq_time = 0;
+		double f;
+		for (j = 0; j < static_cast<int>(scanning_frequencies.size()); j++) {
+			f = scanning_frequencies[j];
 
-		for (double f : scanning_frequencies) {
 			rp_GenFreq(RP_CH_1, static_cast<int>(f));
 			
 			if (!hasSetDecimation) {
@@ -327,80 +351,101 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 
 			sumAmp = 0, sumPh = 0;
 			for (i = 0; i < nb_acquisitions; i++) {
-				pourcent = std::floor((i + j*nb_acquisitions) / static_cast<float>(nb_acquisitions * scanning_frequencies.size())*10000)/100;
+				pourcent = std::floor((i + j*nb_acquisitions + 1) / static_cast<float>(nb_acquisitions * scanning_frequencies.size())*10000)/100;
 				std::cerr << "\rFrequency " << f << " Hz (" << pourcent << "%)    " << std::flush;
 
-				auto acq_start = std::chrono::high_resolution_clock::now();
+				/* BEGIN ACQUISITION */ {
+					if (measure_time) acq_timer.start();
 
-				// Acquisition sur les channels 1 et 2 avec le trigger sur le channel 1
-				acquisitionChannels1_2(signal1, signal2, RP_T_CH_1);
+					// Acquisition sur les channels 1 et 2 avec le trigger sur le channel 1
+					//acquisitionChannels1_2(signal1, signal2, RP_T_CH_1);
 
-				auto acq_stop = std::chrono::high_resolution_clock::now();
-				auto duration = std::chrono::duration_cast<std::chrono::microseconds>(acq_stop - acq_start);
-				acq_time += duration.count()/1000;
+					if (measure_time) acq_timer.stop();
 
-				// Fenêtrage des signaux
-				windowed_signal1 = window.apply(signal1);
-				windowed_signal2 = window.apply(signal2);
-				
-				// démodulation des signaux
-				dem.apply(signal1, amplitude_demodulated1, phase_demodulated1, true);
-				dem.apply(signal2, amplitude_demodulated2, phase_demodulated2, true);
+				} /* END ACQUISITION */
 
-				if (mode_debug) {
-					for (size_t k = 0; k < BUFFER_SIZE; k++) {
-						// Sauvegarde des signaux
-						bigSignal1[k + i*BUFFER_SIZE] = signal1[k];
-						bigSignal2[k + i*BUFFER_SIZE] = signal2[k];
+				/* BEGIN PROCESSING */ {
+					if (measure_time) process_timer.start();
 
-						bigAmplitudeDemodulated1[k + i*BUFFER_SIZE] = amplitude_demodulated1[k];
-						bigAmplitudeDemodulated2[k + i*BUFFER_SIZE] = amplitude_demodulated2[k];
+					// Fenêtrage des signaux
+					windowed_signal1 = window.apply(signal1);
+					windowed_signal2 = window.apply(signal2);
 
-						bigPhaseDemodulated1[k + i*BUFFER_SIZE] = phase_demodulated1[k];
-						bigPhaseDemodulated2[k + i*BUFFER_SIZE] = phase_demodulated2[k];
+					if (measure_time) demodulation_timer.start();
+					
+					// démodulation des signaux
+					dem.apply(signal1, amplitude_demodulated1, phase_demodulated1, true);
+					dem.apply(signal2, amplitude_demodulated2, phase_demodulated2, true);
 
-						// Calculer la moyenne de l'ampltitude et de la phase après le temps de montée
-						if (k >= indexRisingTime) {
+					if (measure_time) demodulation_timer.stop();
+
+					if (mode_debug) {
+						for (size_t k = 0; k < BUFFER_SIZE; k++) {
+							// Sauvegarde des signaux
+							bigSignal1[k + i*BUFFER_SIZE] = signal1[k];
+							bigSignal2[k + i*BUFFER_SIZE] = signal2[k];
+
+							bigAmplitudeDemodulated1[k + i*BUFFER_SIZE] = amplitude_demodulated1[k];
+							bigAmplitudeDemodulated2[k + i*BUFFER_SIZE] = amplitude_demodulated2[k];
+
+							bigPhaseDemodulated1[k + i*BUFFER_SIZE] = phase_demodulated1[k];
+							bigPhaseDemodulated2[k + i*BUFFER_SIZE] = phase_demodulated2[k];
+
+							// Calculer la moyenne de l'ampltitude et de la phase après le temps de montée
+							if (k >= indexRisingTime) {
+								sumAmp += amplitude_demodulated2[k];
+								sumPh  += (phase_demodulated2[k] - phase_demodulated1[k]);
+							}
+						}
+					} else {
+						if (measure_time) sum_timer.start();
+
+						for (size_t k = indexRisingTime; k < BUFFER_SIZE; k++) {
 							sumAmp += amplitude_demodulated2[k];
 							sumPh  += (phase_demodulated2[k] - phase_demodulated1[k]);
 						}
+
+						if (measure_time) sum_timer.stop();
 					}
-				} else {
-					for (size_t k = indexRisingTime; k < BUFFER_SIZE; k++) {
-						sumAmp += amplitude_demodulated2[k];
-						sumPh  += (phase_demodulated2[k] - phase_demodulated1[k]);
-					}
+
+					if (measure_time) process_timer.stop();
+				} /* END PROCESSING */
+			}
+
+			/* BEGIN AVERAGING */ {
+				if (measure_time) average_timer.start();
+
+				// calculer la moyenne de l'ampltitude après le temps de montée puis appliquer le filtre moyenneur
+				amplitude = averaging_filter1.apply(sumAmp / static_cast<double>(sizePermanentRegime * nb_acquisitions));
+				phase = averaging_filter2.apply(sumPh / static_cast<double>(sizePermanentRegime * nb_acquisitions));
+
+				// on vérifie si l'amplitude est plus grande que l'amplitude maximale déjà enregistrée
+				if (amplitude > amplitude_max) {
+					amplitude_max = amplitude;
+					amplitude_max_frequency = f;
 				}
-			}
+				// on vérifie si la phase est plus grande que la phase maximale déjà enregistrée
+				if (phase > phase_max) {
+					phase_max = phase;
+					phase_max_frequency = f;
+				}
 
-			// calculer la moyenne de l'ampltitude après le temps de montée puis appliquer le filtre moyenneur
-			amplitude = averaging_filter1.apply(sumAmp / static_cast<double>(sizePermanentRegime * nb_acquisitions));
-			phase = averaging_filter2.apply(sumPh / static_cast<double>(sizePermanentRegime * nb_acquisitions));
+				// on vérifie si l'amplitude est plus petite que l'amplitude minimale déjà enregistrée
+				if (amplitude < amplitude_min) {
+					amplitude_min = amplitude;
+					amplitude_min_frequency = f;
+				}
+				// on vérifie si la phase est plus grande que la phase minimale déjà enregistrée
+				if (phase < phase_min) {
+					phase_min = phase;
+					phase_min_frequency = f;
+				}
 
-			// on vérifie si l'amplitude est plus grande que l'amplitude maximale déjà enregistrée
-			if (amplitude > amplitude_max) {
-				amplitude_max = amplitude;
-				amplitude_max_frequency = f;
-			}
-			// on vérifie si la phase est plus grande que la phase maximale déjà enregistrée
-			if (phase > phase_max) {
-				phase_max = phase;
-				phase_max_frequency = f;
-			}
+				amplitude_of_movement[j] = amplitude;
+				phase_of_movement[j] = phase;
 
-			// on vérifie si l'amplitude est plus petite que l'amplitude minimale déjà enregistrée
-			if (amplitude < amplitude_min) {
-				amplitude_min = amplitude;
-				amplitude_min_frequency = f;
-			}
-			// on vérifie si la phase est plus grande que la phase minimale déjà enregistrée
-			if (phase < phase_min) {
-				phase_min = phase;
-				phase_min_frequency = f;
-			}
-
-			amplitude_of_movement.push_back(amplitude);
-			phase_of_movement.push_back(phase);
+				if (measure_time) average_timer.stop();
+			} /* END AVERAGING */
 
 			/* Sauvgarde des données */
 			if (mode_debug) {
@@ -414,7 +459,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 				bigPhaseDemodulated2.setName("phase_demodulated2_" + std::to_string(static_cast<int>(f)));
 				std::vector<Signal> phases_demodulated = {bigPhaseDemodulated1, bigPhaseDemodulated2};
 			
-				if (f == scanning_frequencies[0]) {
+				if (j == 0) {
 					outFile1.writeSignals(bigSignals, true);
 					outFile2.writeSignals(amplitudes_demodulated, true);
 					outFile3.writeSignals(phases_demodulated, true);
@@ -424,8 +469,6 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 					outFile3.writeSignalsToEnd(phases_demodulated);
 				}
 			}
-
-			j++;
 		}
 		std::cerr << "\n";
 			
@@ -438,7 +481,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 
 		/* - - - - - - - - - - - - - - - - - - - - - - - */
 
-		std::cerr << "+---- Write descriptions file ---+" << std::endl;
+		std::cerr << "+--- Write descriptions file ---+" << std::endl;
 
 		std::ostringstream oss;
 	
@@ -446,6 +489,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		oss << "type = module" << std::endl;
 		oss << "name = frequencyScanning" << std::endl;
 		oss << "debug = " << mode_debug << std::endl;
+		oss << std::endl;
 		oss << "[parameters]" << std::endl;
 		oss << "# Acquisition parameters" << std::endl;
 		oss << "trigger_level = " << trigger_level << std::endl;
@@ -454,6 +498,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		oss << "decimation = "			<< DECIMATION << std::endl;
 		oss << "buffsize = "			<< BUFFER_SIZE << std::endl;
 		oss << "nb_acquisitions = "	    << nb_acquisitions << std::endl;
+		oss << std::endl;
 		oss << "# Scanning parameters" << std::endl;
 		oss << "frequency_min = "		<< frequency_min << std::endl;
 		oss << "frequency_max = "		<< frequency_max << std::endl;
@@ -465,11 +510,26 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		oss << "window_type = "			<< windowTypeToString(window_type) << std::endl;
 		oss << "dem_filter_freq = "		<< dem_filter_freq << std::endl;
 		oss << "averaging_filter_order = " << averaging_filter_order << std::endl;
+		oss << std::endl;
 		oss << "[variables]" << std::endl;
 		oss << "samplig_frequency = " << SAMPLING_FREQUENCY << std::endl;
 		oss << "index_rising_time = " << indexRisingTime << std::endl;
+		oss << std::endl;
 		oss << "[measures]" << std::endl;
-		oss << "acquisition_time = " << acq_time / (scanning_frequencies.size() * nb_acquisitions) << std::endl;
+		if (measure_time) {
+			oss << "# Time in milliseconds" << std::endl;
+			oss << "acquisition_time_max = " << acq_timer.getMaxDuration() << std::endl;
+			oss << "acquisition_time_min = " << acq_timer.getMinDuration() << std::endl;
+			oss << "process_time_max = " << process_timer.getMaxDuration() << std::endl;
+			oss << "process_time_min = " << process_timer.getMinDuration() << std::endl;
+			oss << "sum_process_time_max = " << sum_timer.getMaxDuration() << std::endl;
+			oss << "sum_process_time_min = " << sum_timer.getMinDuration() << std::endl;
+			oss << "average_process_time_max = " << average_timer.getMaxDuration() << std::endl;
+			oss << "average_process_time_min = " << average_timer.getMinDuration() << std::endl;
+			oss << "demodulation_time_max = " << demodulation_timer.getMaxDuration() << std::endl;
+			oss << "demodulation_time_min = " << demodulation_timer.getMinDuration() << std::endl;
+		}
+		oss << std::endl;
 		oss << "amplitude_max = " << amplitude_max << std::endl;
 		oss << "amplitude_max_frequency = " << amplitude_max_frequency << std::endl;
 		oss << "phase_max = " << phase_max << std::endl;
@@ -478,6 +538,7 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 		oss << "amplitude_min_frequency = " << amplitude_min_frequency << std::endl;
 		oss << "phase_min = " << phase_min << std::endl;
 		oss << "phase_min_frequency = " << phase_min_frequency << std::endl;
+		oss << std::endl;
 		oss << "[files]" << std::endl;
 		oss << "file1 = " << filename1 << std::endl;
 		oss << "file2 = " << filename2 << std::endl;
@@ -499,148 +560,4 @@ int module_frequencyScanning(const std::vector<std::string> &args) {
 	rp_Release();
 
 	return result;
-}
-
-int module_lockIn(const std::vector<std::string> &args) {
-	/*int result;
-	
-	try {
-
-		SetBufferSize(ADC_BUFFER_SIZE);
-		SetDecimation(16);
-
-		// proporiétés du balayage en fréquence
-		int frequency = 100;
-		int frequency_max = 100000;
-		int number_of_frequencies_in_the_inteval = 40;
-
-		// propriétés du sinal généré
-		float output_amplitude = 1.0f;
-		float output_phase  = 0;
-		float output_offset = 0;
-		
-		// propriétés acquisition
-		int points_per_period = 100;
-		bool hasSetDecimation = false;
-		int nb_acquisitions = 10; // nombre d'acquisitions à effectuer pour chaque fréquence
-		int delay = 1000;
-
-		// propriété démodulation
-		double dem_filter_freq = 1e3;
-
-		// propriété de la fenêtre
-		WindowType window_type = WindowType::Rectangular;
-
-		if (args.size() >= 1) {
-			for (auto param : args) {
-				if (param == "help") {
-					std::cerr << "\033[4;0mHelp message\033[0m" << std::endl;
-					std::cerr << "Details:" << std::endl;
-					std::cerr << "  This module performs a frequency sweep, generating a sequence of" << std::endl;
-					std::cerr << "  frequencies on a logarithmic scale at the output of the card," << std::endl;
-					std::cerr << "  then performing an acquisition at the input of the card." << std::endl;
-					std::cerr << "  " << std::endl;
-					std::cerr << "Possibilities of utilisation : " << std::endl;
-					std::cerr << "  Logarithmic scale for frequency scanning : " << std::endl;
-					std::cerr << "    frequency_min=<integer>; fmin=<integer>" << std::endl;
-					std::cerr << "      details: this is the minimum frequency of the frequency sweep" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << frequency_min << std::endl;
-					std::cerr << "    frequency_max=<integer>; fmax=<integer>" << std::endl;
-					std::cerr << "      details: this is the maximum frequency of the frequency sweep" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << frequency_max << std::endl;
-					std::cerr << "    number_of_frequencies_in_the_inteval=<integer>; nfi=<integer>" << std::endl;
-					std::cerr << "      details: this is the number of frequencies to scan on the frequency sweep" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << number_of_frequencies_in_the_inteval << std::endl;
-					std::cerr << "  Generator properties : " << std::endl;
-					std::cerr << "    amplitude=<valu>; a=<value>; " << std::endl;
-					std::cerr << "      details: this is the amplitude of the signal generated by the card" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << output_amplitude << std::endl;
-					std::cerr << "    offset=<valeur>; off=<valeur>; " << std::endl;
-					std::cerr << "      details: this is the offset of the signal generated by the card" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << output_offset << std::endl;
-					std::cerr << "    phase=<value>; ph=<value>; " << std::endl;
-					std::cerr << "      details: this is the phase of the signal generated by the card" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << output_phase << std::endl;
-					std::cerr << "  RP properties : " << std::endl;
-					std::cerr << "    buffer_size=<integer>; \tbs=<integer>; " << std::endl;
-					std::cerr << "      details: this is the buffer size of the acquisition signal" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << ADC_BUFFER_SIZE << std::endl;
-					std::cerr << "  Acquisition properties : " << std::endl;
-					std::cerr << "    delay=<integer µs>" << std::endl;
-					std::cerr << "      details: this is the delay between the end of the generation and the start of the acquisition" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << delay << std::endl;
-					std::cerr << "    window_type=<string>; \twindow=<string>; " << std::endl;
-					std::cerr << "      details: this is the type of window to apply to the acquisition signal" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << windowTypeToString(window_type) << std::endl;
-					std::cerr << "    dem_filter_freq=<integer>; \tdff=<integer>; " << std::endl;
-					std::cerr << "      details: this is the frequency of the low pass filter to apply to the demodulation" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << dem_filter_freq << std::endl;
-					std::cerr << "    points_per_period=<integer>; \tppp=<integer>; " << std::endl;
-					std::cerr << "      details: this is the number of points per period of the signal" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << points_per_period << std::endl;
-					std::cerr << "    decimation=<integer>; \tdec=<integer>; " << std::endl;
-					std::cerr << "      details: this is the decimation factor of the acquisition signal" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << points_per_period << std::endl;
-					std::cerr << "    nb_acquisitions=<integer>; \tnba=<integer>; " << std::endl;
-					std::cerr << "      details: this is the number of acquisitions to perform by frequency in sweep frequencies" << std::endl;
-					std::cerr << "      note: this argument is optional, and if not entered, the default value is " << nb_acquisitions << std::endl;
-					return 0;
-				} else {
-					// Parse other arguments
-					size_t pos = param.find('=');
-					if (pos != std::string::npos) {
-						std::string name = param.substr(0, pos);
-						std::string value = param.substr(pos + 1);
-
-						if (name == "frequency_min" || name == "fmin") {
-							frequency_min = std::abs(convertToInteger(value));
-						} else if (name == "frequency_max" || name == "fmax") {
-							frequency_max = std::abs(convertToInteger(value));
-						} else if (name == "number_of_frequencies_in_the_inteval" || name == "nfi") {
-							number_of_frequencies_in_the_inteval = std::abs(std::stoi(value));
-						} else if (name == "amplitude" || name == "a") {
-							output_amplitude = std::stof(value);
-						} else if (name == "phase" || name == "ph") {
-							output_phase = std::stof(value);
-						} else if (name == "offset" || name == "off") {
-							output_offset = std::stof(value);
-						} else if (name == "delay") {
-							delay = std::abs(convertToInteger(value));
-						} else if (name == "window" || name == "win") {
-							window_type = stringToWindowType(value);
-						} else if (name == "dem_filter_freq" || name == "dff") {
-							dem_filter_freq = std::abs(convertToInteger(value));
-						} else if (name == "points_per_period" || name == "ppp") {
-							points_per_period = convertToInteger(value);
-						} else if (name == "decimation" || name == "dec") {
-							hasSetDecimation = true;
-							SetDecimation(std::stoi(value));
-						} else if (name == "buffsize" || name == "bs") {
-							SetBufferSize(convertToInteger(value));
-						} else if (name == "nb_acquisitions" || name == "nba") {
-							nb_acquisitions = std::abs(convertToInteger(value));
-						} else {
-							std::cerr << "Error: invalid argument " << param << std::endl;
-							return 1;
-						}
-
-					} else {
-						std::cerr << "Error: invalid argument " << param << std::endl;
-						return 1;
-					}
-				}
-			}
-		}
-
-		//auto startTime = std::chrono::high_resolution_clock::now();
-
-		// Print error, if rp_Init() function failed
-		if (rp_InitReset(true) != RP_OK) {
-			std::cerr << "Error: Rp api init failed!";
-			return 1;
-		}
-
-
-	}*/
-    return 0;
 }
